@@ -1,78 +1,117 @@
-window.onload = function() {
-  const board = document.querySelector('.board');
-  const numBoxesInput = document.getElementById('numBoxesInput');
-  let pressedBoxes = [];
+window.addEventListener('DOMContentLoaded', () => {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  let scale = 1;
+  let isDrawing = false;
+  let lastX = 0;
+  let lastY = 0;
 
-  // Dynamically create the 5x5 board
-  for (let i = 0; i < 25; i++) {
-    const box = document.createElement('div');
-    box.classList.add('box');
-    box.addEventListener('click', function() {
-      toggleBox(box);
-    });
-    board.appendChild(box);
+  // Create a WebSocket connection
+  const socket = new WebSocket('ws://localhost:3000'); // Replace with your server URL
+
+  // Adjust canvas size to match viewport
+  resizeCanvas();
+
+  function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
   }
 
-  function toggleBox(box) {
-    if (pressedBoxes.includes(box)) {
-      return;
-    }
+  // Handle zooming using scroll wheel
+  window.addEventListener('wheel', handleZoom);
 
-    box.classList.add('pressed');
-    pressedBoxes.push(box);
+  function handleZoom(event) {
+      event.preventDefault();
+      const zoomSpeed = 0.1;
+      const wheelDelta = event.deltaY;
+      if (wheelDelta > 0) {
+          scale -= zoomSpeed;
+      } else {
+          scale += zoomSpeed;
+      }
+      applyZoom();
+      // Send the scale value to the server for synchronization
+      sendScale(scale);
   }
 
-  function generateBoxes() {
-    const numBoxes = parseInt(numBoxesInput.value);
-    if (numBoxes < 1 || numBoxes > 24) {
-      alert('Please enter a number between 1 and 24.');
-      return;
-    }
-  
-    // Reset all boxes to their default state
-    const boxes = document.querySelectorAll('.box');
-    boxes.forEach(function(box) {
-      box.classList.remove('pressed', 'marked');
-    });
-  
-    // Clear the pressedBoxes array
-    pressedBoxes = [];
-  
-    // Randomly mark the desired number of boxes
-    const markedBoxes = getRandomBoxes(boxes, numBoxes);
-    markedBoxes.forEach(function(box) {
-      box.classList.add('marked');
-    });
-  
-    // Reattach click event listener to all boxes
-    boxes.forEach(function(box) {
-      box.addEventListener('click', function() {
-        toggleBox(box);
-      });
-    });
-  }
-  
-
-  function getRandomBoxes(boxes, num) {
-  const randomBoxes = [];
-  const totalBoxes = boxes.length;
-  const markedIndices = new Set();
-
-  while (randomBoxes.length < num) {
-    const randomIndex = Math.floor(Math.random() * totalBoxes);
-    if (!markedIndices.has(randomIndex)) {
-      const randomBox = boxes[randomIndex];
-      randomBoxes.push(randomBox);
-      markedIndices.add(randomIndex);
-    }
+  function applyZoom() {
+      canvas.style.transform = `scale(${scale})`;
   }
 
-  return randomBoxes;
-}
+  // Adjust canvas size when the window is resized
+  window.addEventListener('resize', () => {
+      resizeCanvas();
+      applyZoom();
+  });
 
-  
-  
+  // Handle drawing
+  canvas.addEventListener('mousedown', startDrawing);
+  canvas.addEventListener('mousemove', draw);
+  canvas.addEventListener('mouseup', stopDrawing);
+  canvas.addEventListener('mouseout', stopDrawing);
 
-  const generateButton = document.querySelector('.controls button');
-  generateButton.addEventListener('click', generateBoxes);
-};
+  function startDrawing(event) {
+      isDrawing = true;
+      [lastX, lastY] = getMousePosition(event);
+      // Notify the server that drawing has started
+      sendDrawData({ type: 'start', x: lastX, y: lastY });
+  }
+
+  function draw(event) {
+      if (!isDrawing) return;
+
+      const [x, y] = getMousePosition(event);
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      [lastX, lastY] = [x, y];
+      // Send the drawing data to the server for synchronization
+      sendDrawData({ type: 'draw', x, y });
+  }
+
+  function stopDrawing() {
+      isDrawing = false;
+      // Notify the server that drawing has stopped
+      sendDrawData({ type: 'stop' });
+  }
+
+  function getMousePosition(event) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      return [
+          (event.clientX - rect.left) * scaleX,
+          (event.clientY - rect.top) * scaleY
+      ];
+  }
+
+  // Send drawing data to the server for synchronization
+  function sendDrawData(data) {
+      socket.send(JSON.stringify(data));
+  }
+
+  // Receive drawing data from the server and update the canvas
+  socket.addEventListener('message', event => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'start') {
+          [lastX, lastY] = [data.x, data.y];
+      } else if (data.type === 'draw') {
+          ctx.beginPath();
+          ctx.moveTo(lastX, lastY);
+          ctx.lineTo(data.x, data.y);
+          ctx.stroke();
+          [lastX, lastY] = [data.x, data.y];
+      }
+  });
+
+  // Notify the server that a new client has connected
+  socket.addEventListener('open', () => {
+      socket.send(JSON.stringify({ type: 'new-client' }));
+  });
+
+  // Close the WebSocket connection when the window is unloaded
+  window.addEventListener('beforeunload', () => {
+      socket.close();
+  });
+});
