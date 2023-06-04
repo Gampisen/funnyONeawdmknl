@@ -1,19 +1,20 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Box Generator</title>
-  <link rel="stylesheet" type="text/css" href="styles.css">
+    <title>Microsoft Paint-like Website</title>
+    <link rel="stylesheet" type="text/css" href="styles.css">
 </head>
 <body>
-  <div class="container">
-    <div class="board">
+    <div class="toolbar">
+        <button class="tool-button"></button>
+        <button class="tool-button"></button>
+        <!-- Add more buttons for future tools -->
+        <button class="tool-button eraser"></button>
     </div>
-    <div class="controls">
-      <input type="number" id="numBoxesInput" min="1" max="24">
-      <button onclick="generateBoxes()">Generate</button>
+    <div class="canvas-container">
+        <canvas id="canvas"></canvas>
     </div>
-  </div>
 
-  <script src="script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
